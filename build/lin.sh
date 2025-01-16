@@ -21,6 +21,8 @@ case ${PLATFORM} in
     ;;
 esac
 
+rm -rf ${DEPS}
+rm -rf ${TARGET}
 mkdir ${DEPS}
 mkdir ${TARGET}
 
@@ -463,110 +465,10 @@ if [ "$LINUX" = true ]; then
   printf "{local:g_param_spec_types;};" > vips.map
 fi
 # Disable building man pages, gettext po files, tools, and (fuzz-)tests
-sed -i'.bak' "/subdir('man')/{N;N;N;N;d;}" meson.build
 CFLAGS="${CFLAGS} -O3" CXXFLAGS="${CXXFLAGS} -O3" meson setup _build --default-library=shared --buildtype=release --strip --prefix=${TARGET} ${MESON} \
   -Ddeprecated=false -Dexamples=false -Dintrospection=disabled -Dmodules=disabled -Dcfitsio=disabled -Dfftw=disabled -Djpeg-xl=disabled \
   ${WITHOUT_HIGHWAY:+-Dhighway=disabled} -Dorc=disabled -Dmagick=disabled -Dmatio=disabled -Dnifti=disabled -Dopenexr=disabled \
   -Dopenjpeg=disabled -Dopenslide=disabled -Dpdfium=disabled -Dpoppler=disabled -Dquantizr=disabled \
   -Dppm=false -Danalyze=false -Dradiance=false \
   ${LINUX:+-Dcpp_link_args="$LDFLAGS -Wl,-Bsymbolic-functions -Wl,--version-script=$DEPS/vips/vips.map $EXCLUDE_LIBS"}
-meson install -C _build --tag runtime,devel
-
-# Cleanup
-rm -rf ${TARGET}/lib/{pkgconfig,.libs,*.la,cmake}
-
-mkdir ${TARGET}/lib-filtered
-mv ${TARGET}/lib/glib-2.0 ${TARGET}/lib-filtered
-
-# Pack only the relevant libraries
-# Note: we can't use ldd on Linux, since that can only be executed on the target machine
-# Note 2: we modify all dylib dependencies to use relative paths on macOS
-function copydeps {
-  local base=$1
-  local dest_dir=$2
-
-  cp -L $base $dest_dir/$base
-  chmod 644 $dest_dir/$base
-
-  if [ "$LINUX" = true ]; then
-    local dependencies=$(readelf -d $base | grep NEEDED | awk '{ print $5 }' | tr -d '[]')
-  elif [ "$DARWIN" = true ]; then
-    local dependencies=$(otool -LX $base | awk '{print $1}' | grep $TARGET)
-
-    install_name_tool -id @rpath/$base $dest_dir/$base
-  fi
-
-  for dep in $dependencies; do
-    base_dep=$(basename $dep)
-
-    [ ! -f "$PWD/$base_dep" ] && echo "$base_dep does not exist in $PWD" && continue
-    echo "$base depends on $base_dep"
-
-    if [ ! -f "$dest_dir/$base_dep" ]; then
-      if [ "$DARWIN" = true ]; then
-        install_name_tool -change $dep @rpath/$base_dep $dest_dir/$base
-      fi
-
-      # Call this function (recursive) on each dependency of this library
-      copydeps $base_dep $dest_dir
-    fi
-  done;
-}
-
-cd ${TARGET}/lib
-if [ "$LINUX" = true ]; then
-  # Check that we really linked with -z nodelete
-  readelf -Wd ${VIPS_CPP_DEP} | grep -qF NODELETE || (echo "$VIPS_CPP_DEP was not linked with -z nodelete" && exit 1)
-fi
-copydeps ${VIPS_CPP_DEP} ${TARGET}/lib-filtered
-
-# Create JSON file of version numbers
-cd ${TARGET}
-printf "{\n\
-  \"aom\": \"${VERSION_AOM}\",\n\
-  \"archive\": \"${VERSION_ARCHIVE}\",\n\
-  \"cairo\": \"${VERSION_CAIRO}\",\n\
-  \"cgif\": \"${VERSION_CGIF}\",\n\
-  \"exif\": \"${VERSION_EXIF}\",\n\
-  \"expat\": \"${VERSION_EXPAT}\",\n\
-  \"ffi\": \"${VERSION_FFI}\",\n\
-  \"fontconfig\": \"${VERSION_FONTCONFIG}\",\n\
-  \"freetype\": \"${VERSION_FREETYPE}\",\n\
-  \"fribidi\": \"${VERSION_FRIBIDI}\",\n\
-  \"glib\": \"${VERSION_GLIB}\",\n\
-  \"harfbuzz\": \"${VERSION_HARFBUZZ}\",\n\
-  \"heif\": \"${VERSION_HEIF}\",\n\
-  \"highway\": \"${VERSION_HWY}\",\n\
-  \"imagequant\": \"${VERSION_IMAGEQUANT}\",\n\
-  \"lcms\": \"${VERSION_LCMS2}\",\n\
-  \"mozjpeg\": \"${VERSION_MOZJPEG}\",\n\
-  \"pango\": \"${VERSION_PANGO}\",\n\
-  \"pixman\": \"${VERSION_PIXMAN}\",\n\
-  \"png\": \"${VERSION_PNG16}\",\n\
-  \"proxy-libintl\": \"${VERSION_PROXY_LIBINTL}\",\n\
-  \"rsvg\": \"${VERSION_RSVG}\",\n\
-  \"spng\": \"${VERSION_SPNG}\",\n\
-  \"tiff\": \"${VERSION_TIFF}\",\n\
-  \"vips\": \"${VERSION_VIPS}\",\n\
-  \"webp\": \"${VERSION_WEBP}\",\n\
-  \"xml\": \"${VERSION_XML2}\",\n\
-  \"zlib-ng\": \"${VERSION_ZLIB_NG}\"\n\
-}" >versions.json
-
-printf "\"${PLATFORM}\"" >platform.json
-
-# Add third-party notices
-$CURL -O https://raw.githubusercontent.com/lovell/sharp-libvips/main/THIRD-PARTY-NOTICES.md
-
-# Create the tarball
-ls -al lib
-rm -rf lib
-mv lib-filtered lib
-tar chzf ${PACKAGE}/libvips-${VERSION_VIPS}-${PLATFORM}.tar.gz \
-  include \
-  lib \
-  *.json \
-  THIRD-PARTY-NOTICES.md
-
-# Allow tarballs to be read outside container
-chmod 644 ${PACKAGE}/libvips-${VERSION_VIPS}-${PLATFORM}.tar.*
+meson install -C _build

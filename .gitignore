@@ -1,3 +1,4 @@
+sharp_repo
 libvips*
 *.log
 build/wasm-vips-*

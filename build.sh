@@ -104,7 +104,7 @@ done
 for flavour in linux-x64 linuxmusl-x64 linux-armv6 linux-arm64v8 linuxmusl-arm64v8 linux-ppc64le linux-s390x; do
   if [ $PLATFORM = "all" ] || [ $PLATFORM = $flavour ]; then
     echo "Building $flavour..."
-    docker build -t vips-dev-$flavour platforms/$flavour
-    docker run --rm -e "VERSION_VIPS=${VERSION_VIPS}" -e VERSION_LATEST_REQUIRED -v $PWD:/packaging vips-dev-$flavour sh -c "/packaging/build/lin.sh"
+    docker build -t official-vips-dev-$flavour platforms/$flavour
+    docker stop official-lightweight || true && docker rm official-lightweight || true && docker run -d -v $PWD:/packaging --name official-lightweight official-vips-dev-$flavour
   fi
 done

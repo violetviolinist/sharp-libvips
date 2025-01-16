@@ -1,7 +1,4 @@
-FROM amazonlinux:2
-LABEL maintainer="Lovell Fuller <npm@lovell.info>"
-
-# Create Amazon Linux 2 (glibc 2.26) container suitable for building Linux x64 binaries
+FROM amazonlinux:2023
 
 # Path settings
 ENV \
@@ -12,17 +9,17 @@ ENV \
 # Build dependencies
 RUN \
   yum update -y && \
-  amazon-linux-extras install epel -y && \
+  yum groupinstall "Development Tools" -y && \
   yum install -y --setopt=tsflags=nodocs \
-    --exclude=gcc \
+    wget \
+    vim \
+    nano \
+    unzip \
+    sudo \
     autoconf \
     automake \
     bzip2 \
     cmake3 \
-    curl \
-    gcc10 \
-    gcc10-binutils \
-    gcc10-c++ \
     gettext \
     git \
     gperf \
@@ -33,24 +30,25 @@ RUN \
     patch \
     pkgconfig \
     python3 \
+    python3-pip \
     tar \
     xz \
     && \
-  ln -s /usr/bin/gcc10-gcc /usr/bin/cc && \
-  ln -s /usr/bin/gcc10-g++ /usr/bin/c++ && \
-  ln -s /usr/bin/gcc10-ar /usr/bin/ar && \
-  ln -s /usr/bin/gcc10-nm /usr/bin/nm && \
-  ln -s /usr/bin/gcc10-ld /usr/bin/ld && \
-  ln -s /usr/bin/gcc10-strip /usr/bin/strip && \
-  ln -s /usr/bin/gcc10-ranlib /usr/bin/ranlib && \
-  ln -s /usr/bin/gcc10-readelf /usr/bin/readelf && \
   curl https://sh.rustup.rs -sSf | sh -s -- -y \
     --no-modify-path \
     --profile minimal \
     && \
   cargo install cargo-c && \
-  ln -s /usr/bin/cmake3 /usr/bin/cmake && \
   pip3 install meson ninja packaging tomli
+
+ENV NODE_VERSION=22.13.0
+ENV NVM_DIR=/usr/local/nvm
+RUN mkdir -p $NVM_DIR
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+RUN . "$NVM_DIR/nvm.sh" && nvm install ${NODE_VERSION} && nvm use v${NODE_VERSION}
+ENV PATH=${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/:${PATH}
+RUN node -v
+RUN npm -v
 
 # Compiler settings
 ENV \
@@ -61,3 +59,21 @@ ENV \
 
 COPY Toolchain.cmake /root/
 COPY meson.ini /root/
+
+
+ENV PKG_CONFIG_LIBDIR=/target/lib/pkgconfig
+ENV PATH="$PATH:/target/bin"
+ENV LD_LIBRARY_PATH=/target/lib
+ENV CPPFLAGS="-I/target/include"
+ENV LDFLAGS="-L/target/lib"
+
+# RUN sh -c /packaging/build/lin.sh
+
+ENV PKG_CONFIG_PATH=/target/lib/pkgconfig
+ENV LIBRARY_PATH=/target/lib:/target/lib64:/usr/local/lib64:/usr/local/lib:/usr/lib64:/usr/lib:/target/lib/glib-2.0/include
+ENV LD_LIBRARY_PATH=/target/lib:/usr/local/lib64:/usr/local/lib:/usr/lib64:/usr/lib
+ENV VERSION_VIPS=8.15.3
+ENV VERSION_LATEST_REQUIRED=false
+ENV SHARP_FORCE_GLOBAL_LIBVIPS=true
+
+CMD ["tail", "-f", "/dev/null"]
